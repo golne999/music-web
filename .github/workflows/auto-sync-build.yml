@@ -1,4 +1,4 @@
-name: Sync Upstream and Build Docker Image (With Build)
+name: Sync Upstream and Build Docker Image (With Build & Private Package Stub)
 
 permissions:
   contents: write
@@ -88,17 +88,15 @@ jobs:
         run: |
           git clone https://git.unlock-music.dev/um/web.git upstream-web
 
-      - name: Stub private package
-        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
-        run: |
-          mkdir -p upstream-web/node_modules/@unlock-music/joox-crypto
-          echo "module.exports = {};" > upstream-web/node_modules/@unlock-music/joox-crypto/index.js
-
-      - name: Install and build
+      - name: Replace private package and build
         if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
         run: |
           cd upstream-web
-          npm ci --no-optional --legacy-peer-deps
+          mkdir -p fake-joox-crypto
+          echo '{ "name": "@unlock-music/joox-crypto", "version": "0.0.1", "main": "index.js" }' > fake-joox-crypto/package.json
+          echo "module.exports = {};" > fake-joox-crypto/index.js
+          npm install ./fake-joox-crypto
+          npm install --no-optional --legacy-peer-deps
           npm run build
 
       - name: Log in to Docker Hub
