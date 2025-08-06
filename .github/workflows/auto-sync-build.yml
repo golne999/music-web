@@ -1,4 +1,4 @@
-name: Sync Upstream and Build Docker Image (Upstream Dockerfile)
+name: Sync Upstream and Build Docker Image (With Build)
 
 permissions:
   contents: write
@@ -77,6 +77,30 @@ jobs:
             echo "manual=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set up Node.js
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Clone upstream repo
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        run: |
+          git clone https://git.unlock-music.dev/um/web.git upstream-web
+
+      - name: Stub private package
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        run: |
+          mkdir -p upstream-web/node_modules/@unlock-music/joox-crypto
+          echo "module.exports = {};" > upstream-web/node_modules/@unlock-music/joox-crypto/index.js
+
+      - name: Install and build
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        run: |
+          cd upstream-web
+          npm ci --no-optional --legacy-peer-deps
+          npm run build
+
       - name: Log in to Docker Hub
         if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
         uses: docker/login-action@v3
@@ -91,11 +115,6 @@ jobs:
       - name: Set up Docker Buildx
         if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
         uses: docker/setup-buildx-action@v3
-
-      - name: Clone upstream repo
-        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
-        run: |
-          git clone https://git.unlock-music.dev/um/web.git upstream-web
 
       - name: Build and push Docker image (use upstream Dockerfile)
         if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
