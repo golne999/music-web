@@ -1,10 +1,12 @@
-FROM --platform=$TARGETPLATFORM nginx:stable-alpine
+# ======= 构建阶段 =======
+FROM node:18-alpine AS build
+WORKDIR /app
+COPY . .
+RUN npm ci && npm run build
 
-LABEL org.opencontainers.image.title="Unlock Music"
-LABEL org.opencontainers.image.description="Unlock encrypted music file in browser"
-LABEL org.opencontainers.image.authors="MengYX"
-LABEL org.opencontainers.image.source="https://git.unlock-music.dev/um/web"
-LABEL org.opencontainers.image.licenses="MIT"
+# ======= 生产阶段 =======
+FROM nginx:stable-alpine
 LABEL maintainer="MengYX"
-
-COPY ./dist /usr/share/nginx/html
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
