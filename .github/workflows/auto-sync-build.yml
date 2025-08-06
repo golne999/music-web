@@ -92,10 +92,15 @@ jobs:
         if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
         run: |
           cd upstream-web
+          # 1. fake private package
           mkdir -p fake-joox-crypto
           echo '{ "name": "@unlock-music/joox-crypto", "version": "0.0.1", "main": "index.js" }' > fake-joox-crypto/package.json
           echo "module.exports = {};" > fake-joox-crypto/index.js
           npm install ./fake-joox-crypto
+          # 2. add type declaration shim
+          mkdir -p src/types
+          echo "declare module '@unlock-music/joox-crypto' { const value: any; export default value; }" > src/types/shims-joox.d.ts
+          # 3. install dependencies & build
           npm install --no-optional --legacy-peer-deps
           npm run build
 
