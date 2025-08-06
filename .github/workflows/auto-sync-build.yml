@@ -30,23 +30,37 @@ jobs:
             echo "updated=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Force build on first run
+        id: first_run
+        run: |
+          if [ ! -f .github/.workflow-first-run ]; then
+            echo "force=true" >> $GITHUB_OUTPUT
+            mkdir -p .github
+            echo "done" > .github/.workflow-first-run
+            git add .github/.workflow-first-run
+            git commit -m "Add workflow first run marker" || true
+            git push || true
+          else
+            echo "force=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up QEMU
-        if: steps.check_update.outputs.updated == 'true'
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        if: steps.check_update.outputs.updated == 'true'
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        if: steps.check_update.outputs.updated == 'true'
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push Docker image
-        if: steps.check_update.outputs.updated == 'true'
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
