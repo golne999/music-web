@@ -38,7 +38,7 @@ jobs:
         id: upstream_hash
         run: |
           HASH=$(git ls-remote https://git.unlock-music.dev/um/web.git HEAD | awk '{print $1}')
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
+          printf "hash=%s\n" "$HASH" | tee -a $GITHUB_OUTPUT
 
       - name: Check if upstream updated
         id: check_update
