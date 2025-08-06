@@ -2,7 +2,7 @@ name: Sync Upstream and Build Docker Image
 
 on:
   schedule:
-    - cron: '0 4 * * *' # 每天凌晨 4 点
+    - cron: '0 4 * * *' # 每天凌晨 2 点
   workflow_dispatch:
 
 jobs:
