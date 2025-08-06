@@ -1,7 +1,8 @@
-name: Sync Upstream and Build Docker Image
+name: Sync Upstream and Build Docker Image (Upstream Dockerfile)
 
 permissions:
   contents: write
+  packages: write
 
 on:
   schedule:
@@ -12,47 +13,20 @@ jobs:
   sync-and-build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout workflow repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Increase Git buffer size
-        run: |
-          git config --global http.postBuffer 524288000
-          git config --global http.maxRequests 100
-
-      - name: Sync upstream (keep my Dockerfile)
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-          git remote add upstream https://git.unlock-music.dev/um/web.git || true
-          for i in {1..3}; do git fetch upstream && break || sleep 5; done
-          git checkout -b upstream-sync upstream/main
-          git rm -f Dockerfile || true
-          git rm -rf .github || true
-          git commit -m "Remove upstream Dockerfile and .github" || true
-          git checkout main
-          git checkout upstream-sync -- . ':!Dockerfile' ':!.github'
-          git commit -am "Sync from upstream (keep custom Dockerfile)" || true
-          git push origin main
-
-      - name: Check if repo updated
-        id: check_update
-        run: |
-          if git log HEAD@{1}..HEAD --oneline | grep .; then
-            echo "updated=true" >> $GITHUB_OUTPUT
-          else
-            echo "updated=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Force build on first run
+      - name: Check if first run
         id: first_run
         run: |
           if [ ! -f .github/.workflow-first-run ]; then
             echo "force=true" >> $GITHUB_OUTPUT
             mkdir -p .github
             echo "done" > .github/.workflow-first-run
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
             git add .github/.workflow-first-run
             git commit -m "Add workflow first run marker" || true
             git push || true
@@ -60,26 +34,74 @@ jobs:
             echo "force=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Set up QEMU
-        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
-        uses: docker/setup-qemu-action@v3
+      - name: Get last upstream commit hash
+        id: upstream_hash
+        run: |
+          git ls-remote https://git.unlock-music.dev/um/web.git HEAD | awk '{print $1}' > upstream_hash.txt
+          echo "hash=$(cat upstream_hash.txt)" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
-        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
-        uses: docker/setup-buildx-action@v3
+      - name: Check if upstream updated
+        id: check_update
+        run: |
+          LAST_HASH_FILE=".github/last-upstream-hash"
+          NEW_HASH="${{ steps.upstream_hash.outputs.hash }}"
+          if [ ! -f "$LAST_HASH_FILE" ]; then
+            echo "$NEW_HASH" > "$LAST_HASH_FILE"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            git add "$LAST_HASH_FILE"
+            git commit -m "Add initial upstream hash" || true
+            git push || true
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            OLD_HASH=$(cat "$LAST_HASH_FILE")
+            if [ "$NEW_HASH" != "$OLD_HASH" ]; then
+              echo "$NEW_HASH" > "$LAST_HASH_FILE"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git config user.name "github-actions[bot]"
+              git add "$LAST_HASH_FILE"
+              git commit -m "Update upstream hash" || true
+              git push || true
+              echo "updated=true" >> $GITHUB_OUTPUT
+            else
+              echo "updated=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Check if manual trigger
+        id: manual_trigger
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual=true" >> $GITHUB_OUTPUT
+          else
+            echo "manual=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Log in to Docker Hub
-        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
-        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: golne/un-music:latest
+      - name: Set up QEMU
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Clone upstream repo
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        run: |
+          git clone https://git.unlock-music.dev/um/web.git upstream-web
+
+      - name: Build and push Docker image (use upstream Dockerfile)
+        if: steps.check_update.outputs.updated == 'true' || steps.first_run.outputs.force == 'true' || steps.manual_trigger.outputs.manual == 'true'
+        run: |
+          cd upstream-web
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t golne/un-music:latest \
+            --push .
