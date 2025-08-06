@@ -2,7 +2,7 @@ name: Sync Upstream and Build Docker Image
 
 on:
   schedule:
-    - cron: '0 4 * * *' # 每天凌晨 4 点
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,14 +19,24 @@ jobs:
           git config --global http.postBuffer 524288000
           git config --global http.maxRequests 100
 
-      - name: Sync upstream
+      - name: Sync upstream (keep my Dockerfile)
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           git remote add upstream https://git.unlock-music.dev/um/web.git || true
           for i in {1..3}; do git fetch upstream && break || sleep 5; done
-          git merge upstream/main --allow-unrelated-histories --no-edit || true
-          git push origin main || true
+          # 切换到临时分支同步 upstream
+          git checkout -b upstream-sync upstream/main
+          # 删除 upstream 的 Dockerfile 和 .github
+          git rm -f Dockerfile || true
+          git rm -rf .github || true
+          git commit -m "Remove upstream Dockerfile and .github" || true
+          # 回到 main，保留本地 Dockerfile
+          git checkout main
+          # 合并 upstream 的更改（忽略 Dockerfile/.github）
+          git checkout upstream-sync -- . ':!Dockerfile' ':!.github'
+          git commit -am "Sync from upstream (keep custom Dockerfile)" || true
+          git push origin main
 
       - name: Check if repo updated
         id: check_update
