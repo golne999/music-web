@@ -37,8 +37,8 @@ jobs:
       - name: Get last upstream commit hash
         id: upstream_hash
         run: |
-          HASH=$(git ls-remote https://git.unlock-music.dev/um/web.git HEAD | awk '{print $1}')
-          printf "hash=%s\n" "$HASH" | tee -a $GITHUB_OUTPUT
+          HASH=$(git ls-remote https://git.unlock-music.dev/um/web.git HEAD | awk '{print $1}' | head -n 1)
+          printf "hash=%s\n" "$HASH" >> $GITHUB_OUTPUT
 
       - name: Check if upstream updated
         id: check_update
